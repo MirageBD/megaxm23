@@ -1,0 +1,9 @@
+MEMORY
+{
+	RAM:			start=$1000, size=$d800;
+}
+
+SEGMENTS
+{
+	MAIN:			load=RAM, start=$1000;
+}
