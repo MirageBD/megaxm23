@@ -1,7 +1,8 @@
 .define imgscreen		$a000	; size = 80*50*2 = $1f40
 .define imgchars		$c000	; 40 * 64 = $0a00
 ;.define screen			$c000
-.define imgdata			$20000  ; 320*200*3 = $2ee00
+.define imgdata			$10000  ; 320*200*3 = $2ee00
+.define moddata			$40000
 
 ; ----------------------------------------------------------------------------------------------------
 
@@ -76,12 +77,24 @@ entry_main
 		jsr fl_waiting
 		FLOPPY_IFFL_FAST_LOAD_INIT "MXM23.IFFLCRCH"
 		FLOPPY_IFFL_FAST_LOAD							; load MIM file
+		FLOPPY_IFFL_FAST_LOAD							; load MOD file
 		jsr fl_exit
 
 		sei
 
 		lda #$35
 		sta $01
+
+		lda #<.loword(moddata)
+		sta adrPepMODL+0
+		lda #>.loword(moddata)
+		sta adrPepMODL+1
+		lda #<.hiword(moddata)
+		sta adrPepMODH+0
+		lda #>.hiword(moddata)
+		sta adrPepMODH+1
+
+		jsr peppitoInit
 
 		lda #$80
 		sta $d020
@@ -171,6 +184,8 @@ entry_main
 		sta $d065
 
 		DMA_RUN_JOB imgrender_clearcolorramjob
+		DMA_RUN_JOB imgrender_clearbitmapjob1
+		DMA_RUN_JOB imgrender_clearbitmapjob2
 
 		lda #<.loword(SAFE_COLOR_RAM_PLUS_ONE)
 		sta uidraw_colptr+0
@@ -399,27 +414,6 @@ img_render_irq
 		lda bluelefthi,x
 		sta imgrucb+2
 
-		lda redrightlo,x
-		sta imgrucrr+0
-		lda redrightmid,x
-		sta imgrucrr+1
-		lda redrighthi,x
-		sta imgrucrr+2
-
-		lda greenrightlo,x
-		sta imgrucgr+0
-		lda greenrightmid,x
-		sta imgrucgr+1
-		lda greenrighthi,x
-		sta imgrucgr+2
-
-		lda bluerightlo,x
-		sta imgrucbr+0
-		lda bluerightmid,x
-		sta imgrucbr+1
-		lda bluerighthi,x
-		sta imgrucbr+2
-
 		clc
 		lda palntscscreenstart
 		adc #$01
@@ -442,7 +436,7 @@ img_render_irq_loop
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 240										; count
+			.word 120										; count
 imgrucr		.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d108										; dst
@@ -453,7 +447,7 @@ imgrucr		.word $0000										; src
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 240										; count
+			.word 120										; count
 imgrucg		.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d208										; dst
@@ -464,46 +458,8 @@ imgrucg		.word $0000										; src
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 240										; count
+			.word 120										; count
 imgrucb		.word $0000										; src
-			.byte $00										; src bank and flags
-			.word $d308										; dst
-			.byte (($d308 >> 16) & $0f) | %10000000			; dst bank and flags
-			.byte $00										; cmd hi
-			.word $0000										; modulo, ignored
-
-		lda $d070										; BANK IN BITMAP PALETTE - select mapped bank with the upper 2 bits of $d070
-		and #%00111111
-		ora #%10000000
-		sta $d070
-
-			sta $d707										; inline DMA copy
-			.byte $00										; end of job options
-			.byte $00										; copy
-			.word 80										; count
-imgrucrr	.word $0000										; src
-			.byte $00										; src bank and flags
-			.word $d108										; dst
-			.byte (($d108 >> 16) & $0f) | %10000000			; dst bank and flags
-			.byte $00										; cmd hi
-			.word $0000										; modulo, ignored
-
-			sta $d707										; inline DMA copy
-			.byte $00										; end of job options
-			.byte $00										; copy
-			.word 80										; count
-imgrucgr	.word $0000										; src
-			.byte $00										; src bank and flags
-			.word $d208										; dst
-			.byte (($d208 >> 16) & $0f) | %10000000			; dst bank and flags
-			.byte $00										; cmd hi
-			.word $0000										; modulo, ignored
-
-			sta $d707										; inline DMA copy
-			.byte $00										; end of job options
-			.byte $00										; copy
-			.word 80										; count
-imgrucbr	.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d308										; dst
 			.byte (($d308 >> 16) & $0f) | %10000000			; dst bank and flags
@@ -539,27 +495,6 @@ imgrucbr	.word $0000										; src
 		lda bluelefthi,x
 		sta imgrucb+2
 
-		lda redrightlo,x
-		sta imgrucrr+0
-		lda redrightmid,x
-		sta imgrucrr+1
-		lda redrighthi,x
-		sta imgrucrr+2
-
-		lda greenrightlo,x
-		sta imgrucgr+0
-		lda greenrightmid,x
-		sta imgrucgr+1
-		lda greenrighthi,x
-		sta imgrucgr+2
-
-		lda bluerightlo,x
-		sta imgrucbr+0
-		lda bluerightmid,x
-		sta imgrucbr+1
-		lda bluerighthi,x
-		sta imgrucbr+2
-
 :		cpy $d012
 		bne :-
 
@@ -569,6 +504,10 @@ imgrucbr	.word $0000										; src
 
 :		lda #$00
 		sta $d020
+
+		;jsr peppitoPlay
+		
+		jsr testdrawline
 
 		lda palntscscreenstart
 		sta $d012
@@ -580,6 +519,60 @@ imgrucbr	.word $0000										; src
 		plp
 		asl $d019
 		rti
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
+testdrawline
+
+		lda #$f0
+		sta $d020
+
+		lda #$10
+		sta $d020
+
+		MATH_SET x0, $00100000
+		MATH_SET x1, $00600000
+		MATH_SET y0, $00200000
+		MATH_SET y1, $00300000
+
+		inc frame
+		ldx frame
+
+		lda sine,x
+		lsr
+		lsr
+		clc
+		adc #$01
+		sta x0+2
+
+		lda sine+$0040,x
+		lsr
+		lsr
+		clc
+		adc #$01
+		sta y0+2
+
+		lda sine,x
+		lsr
+		clc
+		adc #$01
+		sta x1+2
+
+		lda sine+$0040,x
+		lsr
+		clc
+		adc #$01
+		sta y1+2
+
+		jsr aaline_draw
+
+		lda #$00
+		sta $d020
+
+		rts
+
+frame
+		.byte $00
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
 
@@ -655,116 +648,141 @@ imgrender_clearcolorramjob
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
 
+imgrender_clearbitmapjob1
+				.byte $0a										; Request format (f018a = 11 bytes (Command MSB is $00), f018b is 12 bytes (Extra Command MSB))
+				.byte $80, $00									; source megabyte   ($0000000 >> 20) ($00 is  chip ram)
+				.byte $81, (imgdata) >> 20						; dest megabyte   ($0000000 >> 20) ($00 is  chip ram)
+				.byte $84, $00									; Destination skip rate (256ths of bytes)
+				.byte $85, $01									; Destination skip rate (whole bytes)
+
+				.byte $00										; No more options
+
+																; 12 byte DMA List structure starts here
+				.byte %00000111									; Command LSB
+																;     0–1 DMA Operation Type (Only Copy and Fill implemented at the time of writing)
+																;             %00 = Copy
+																;             %01 = Mix (via MINTERMs)
+																;             %10 = Swap
+																;             %11 = Fill
+																;       2 Chain (i.e., another DMA list follows)
+																;       3 Yield to interrupts
+																;       4 MINTERM -SA,-DA bit
+																;       5 MINTERM -SA, DA bit
+																;       6 MINTERM  SA,-DA bit
+																;       7 MINTERM  SA, DA bit
+
+				.word 0 ; 320*200									; Count LSB + Count MSB
+
+				.word $0000										; this is normally the source addres, but contains the fill value now
+				.byte $00										; source bank (ignored)
+
+				.word (imgdata) & $ffff							; Destination Address LSB + Destination Address MSB
+				.byte (((imgdata) >> 16) & $0f)					; Destination Address BANK and FLAGS (copy to rbBaseMem)
+																;     0–3 Memory BANK within the selected MB (0-15)
+																;       4 HOLD,      i.e., do not change the address
+																;       5 MODULO,    i.e., apply the MODULO field to wraparound within a limited memory space
+																;       6 DIRECTION. If set, then the address is decremented instead of incremented.
+																;       7 I/O.       If set, then I/O registers are visible during the DMA controller at $D000 – $DFFF.
+				;.byte %00000000									; Command MSB
+
+				.word $0000
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
+imgrender_clearbitmapjob2
+				.byte $0a										; Request format (f018a = 11 bytes (Command MSB is $00), f018b is 12 bytes (Extra Command MSB))
+				.byte $80, $00									; source megabyte   ($0000000 >> 20) ($00 is  chip ram)
+				.byte $81, (imgdata+1*65536) >> 20				; dest megabyte   ($0000000 >> 20) ($00 is  chip ram)
+				.byte $84, $00									; Destination skip rate (256ths of bytes)
+				.byte $85, $01									; Destination skip rate (whole bytes)
+
+				.byte $00										; No more options
+
+																; 12 byte DMA List structure starts here
+				.byte %00000111									; Command LSB
+																;     0–1 DMA Operation Type (Only Copy and Fill implemented at the time of writing)
+																;             %00 = Copy
+																;             %01 = Mix (via MINTERMs)
+																;             %10 = Swap
+																;             %11 = Fill
+																;       2 Chain (i.e., another DMA list follows)
+																;       3 Yield to interrupts
+																;       4 MINTERM -SA,-DA bit
+																;       5 MINTERM -SA, DA bit
+																;       6 MINTERM  SA,-DA bit
+																;       7 MINTERM  SA, DA bit
+
+				.word 0 ; 320*200									; Count LSB + Count MSB
+
+				.word $0000										; this is normally the source addres, but contains the fill value now
+				.byte $00										; source bank (ignored)
+
+				.word (imgdata+1*65536) & $ffff					; Destination Address LSB + Destination Address MSB
+				.byte (((imgdata+1*65536) >> 16) & $0f)			; Destination Address BANK and FLAGS (copy to rbBaseMem)
+																;     0–3 Memory BANK within the selected MB (0-15)
+																;       4 HOLD,      i.e., do not change the address
+																;       5 MODULO,    i.e., apply the MODULO field to wraparound within a limited memory space
+																;       6 DIRECTION. If set, then the address is decremented instead of incremented.
+																;       7 I/O.       If set, then I/O registers are visible during the DMA controller at $D000 – $DFFF.
+				;.byte %00000000									; Command MSB
+
+				.word $0000
+
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
 .align 256
 redleftlo
 		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 0*320)
+			.byte <.loword((imgdata) + I*3*256 + 0*256)
 		.endrepeat
 
 .align 256
 redleftmid
 		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 0*320)
+			.byte >.loword((imgdata) + I*3*256 + 0*256)
 		.endrepeat
 
 .align 256
 redlefthi
 		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 0*320)
+			.byte <.hiword((imgdata) + I*3*256 + 0*256)
 		.endrepeat
 
 .align 256
 greenleftlo
 		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 1*320)
+			.byte <.loword((imgdata) + I*3*256 + 1*256)
 		.endrepeat
 
 .align 256
 greenleftmid
 		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 1*320)
+			.byte >.loword((imgdata) + I*3*256 + 1*256)
 		.endrepeat
 
 .align 256
 greenlefthi
 		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 1*320)
+			.byte <.hiword((imgdata) + I*3*256 + 1*256)
 		.endrepeat
 
 .align 256
 blueleftlo
 		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 2*320)
+			.byte <.loword((imgdata) + I*3*256 + 2*256)
 		.endrepeat
 
 .align 256
 blueleftmid
 		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 2*320)
+			.byte >.loword((imgdata) + I*3*256 + 2*256)
 		.endrepeat
 
 .align 256
 bluelefthi
 		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 2*320)
-		.endrepeat
-
-
-
-
-
-.align 256
-redrightlo
-		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 0*320 + 240)
-		.endrepeat
-
-.align 256
-redrightmid
-		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 0*320 + 240)
-		.endrepeat
-
-.align 256
-redrighthi
-		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 0*320 + 240)
-		.endrepeat
-
-.align 256
-greenrightlo
-		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 1*320 + 240)
-		.endrepeat
-
-.align 256
-greenrightmid
-		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 1*320 + 240)
-		.endrepeat
-
-.align 256
-greenrighthi
-		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 1*320 + 240)
-		.endrepeat
-
-.align 256
-bluerightlo
-		.repeat 200, I
-			.byte <.loword((imgdata) + I*3*320 + 2*320 + 240)
-		.endrepeat
-
-.align 256
-bluerightmid
-		.repeat 200, I
-			.byte >.loword((imgdata) + I*3*320 + 2*320 + 240)
-		.endrepeat
-
-.align 256
-bluerighthi
-		.repeat 200, I
-			.byte <.hiword((imgdata) + I*3*320 + 2*320 + 240)
+			.byte <.hiword((imgdata) + I*3*256 + 2*256)
 		.endrepeat
 
 palntscscreenstart

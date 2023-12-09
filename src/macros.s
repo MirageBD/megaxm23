@@ -1,5 +1,5 @@
-.define uidraw_scrptr		$80
-.define uidraw_colptr		$84
+.define uidraw_scrptr		$60
+.define uidraw_colptr		$64
 
 .define COLOR_RAM $ff80000
 .define SAFE_COLOR_RAM COLOR_RAM+2048

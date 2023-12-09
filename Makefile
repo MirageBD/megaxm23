@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
 
-megabuild		= 1
+megabuild		= 0
 attachdebugger	= 0
 
 # -----------------------------------------------------------------------------
@@ -51,7 +51,10 @@ default: all
 OBJS = $(EXE_DIR)/boot.o $(EXE_DIR)/main.o
 
 BINFILES  = $(BIN_DIR)/test.mim
+BINFILES += $(BIN_DIR)/song.mod
+
 BINFILESMC  = $(BIN_DIR)/test.mim.addr.mc
+BINFILESMC += $(BIN_DIR)/song.mod.addr.mc
 
 # -----------------------------------------------------------------------------
 
@@ -60,15 +63,20 @@ $(BIN_DIR)/test.mim: $(BIN_DIR)/test.raw
 
 $(EXE_DIR)/boot.o:	$(SRC_DIR)/boot.s \
 					$(SRC_DIR)/main.s \
+					$(SRC_DIR)/modplay.s \
+					$(SRC_DIR)/aaline.s \
 					$(SRC_DIR)/irqload.s \
 					$(SRC_DIR)/decruncher.s \
 					$(SRC_DIR)/macros.s \
+					$(SRC_DIR)/mathmacros.s \
 					Makefile Linkfile
 	$(AS) $(ASFLAGS) -o $@ $<
 
 $(BIN_DIR)/alldata.bin: $(BINFILES)
-	$(MEGAADDRESS) $(BIN_DIR)/test.mim      00020000
+	$(MEGAADDRESS) $(BIN_DIR)/test.mim               00010000
+	$(MEGAADDRESS) $(BIN_DIR)/song.mod               00040000
 	$(MEGACRUNCH) $(BIN_DIR)/test.mim.addr
+	$(MEGACRUNCH) $(BIN_DIR)/song.mod.addr
 	$(MEGAIFFL) $(BINFILESMC) $(BIN_DIR)/alldata.bin
 
 $(EXE_DIR)/boot.prg.addr.mc: $(BINFILES) $(EXE_DIR)/boot.o Linkfile
