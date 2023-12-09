@@ -125,9 +125,9 @@ entry_main
 		and #%00111111
 		sta $d070
 
+		lda #$00
 		ldx #$00										; set bitmap palette
-:		txa
-		sta $d100,x
+:		sta $d100,x
 		sta $d200,x
 		sta $d300,x
 		inx
@@ -146,9 +146,9 @@ entry_main
 		ora #%10000000									; select palette 02
 		sta $d070
 
-		lda #$00
 		ldx #$00										; set bitmap palette
-:		sta $d100,x
+:		txa
+		sta $d100,x
 		sta $d200,x
 		sta $d300,x
 		inx
@@ -159,9 +159,9 @@ entry_main
 		ora #%11000000									; select palette 03
 		sta $d070
 
-		lda #$00
 		ldx #$00										; set bitmap palette
-:		sta $d100,x
+:		txa
+		sta $d100,x
 		sta $d200,x
 		sta $d300,x
 		inx
@@ -436,7 +436,7 @@ img_render_irq_loop
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 120										; count
+			.word 140										; count
 imgrucr		.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d108										; dst
@@ -447,7 +447,7 @@ imgrucr		.word $0000										; src
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 120										; count
+			.word 140										; count
 imgrucg		.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d208										; dst
@@ -458,7 +458,7 @@ imgrucg		.word $0000										; src
 			sta $d707										; inline DMA copy
 			.byte $00										; end of job options
 			.byte $00										; copy
-			.word 120										; count
+			.word 140										; count
 imgrucb		.word $0000										; src
 			.byte $00										; src bank and flags
 			.word $d308										; dst
@@ -527,29 +527,27 @@ testdrawline
 		lda #$f0
 		sta $d020
 
-		lda #$10
-		sta $d020
+		;DMA_RUN_JOB imgrender_clearbitmapjob1
 
 		MATH_SET x0, $00100000
 		MATH_SET x1, $00600000
 		MATH_SET y0, $00200000
 		MATH_SET y1, $00300000
 
-		inc frame
 		ldx frame
 
 		lda sine,x
 		lsr
 		lsr
 		clc
-		adc #$01
+		adc #$10
 		sta x0+2
 
 		lda sine+$0040,x
 		lsr
 		lsr
 		clc
-		adc #$01
+		adc #$10
 		sta y0+2
 
 		lda sine,x
@@ -564,6 +562,48 @@ testdrawline
 		adc #$01
 		sta y1+2
 
+		jsr aaline_setup
+		jsr aaline_clear
+
+		lda #$10
+		sta $d020
+
+		MATH_SET x0, $00100000
+		MATH_SET x1, $00600000
+		MATH_SET y0, $00200000
+		MATH_SET y1, $00300000
+
+		inc frame
+
+		ldx frame
+
+		lda sine,x
+		lsr
+		lsr
+		clc
+		adc #$10
+		sta x0+2
+
+		lda sine+$0040,x
+		lsr
+		lsr
+		clc
+		adc #$10
+		sta y0+2
+
+		lda sine,x
+		lsr
+		clc
+		adc #$01
+		sta x1+2
+
+		lda sine+$0040,x
+		lsr
+		clc
+		adc #$01
+		sta y1+2
+
+		jsr aaline_setup
 		jsr aaline_draw
 
 		lda #$00

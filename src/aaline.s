@@ -1,39 +1,3 @@
-/*
-
-float absolute(float x)
-{
-	if (x < 0) return -x;
-	else return x;
-}
-
-int iPartOfNumber(float x)
-{
-	return (int)x;
-}
-
-float fPartOfNumber(float x)
-{
-	if (x>0) return x - iPartOfNumber(x);
-	else     return x - (iPartOfNumber(x)+1);
-}
-
-//returns 1 - fractional part of number 
-float rfPartOfNumber(float x) 
-{ 
-	return 1 - fPartOfNumber(x); 
-}
-  
-// draws a pixel on screen of given brightness 0<=brightness<=1.
-void drawPixel(int x, int y, float brightness)
-{
-	int c = 255*brightness;
-	SDL_SetRenderDrawColor(pRenderer, c, c, c, 255);
-	SDL_RenderDrawPoint(pRenderer, x, y);
-}
-*/
-
-
-
 .macro SWAP this, that
 		ldq this
 		stq FP_A
@@ -52,29 +16,105 @@ void drawPixel(int x, int y, float brightness)
 	rol  
 .endmacro
 
-steep			.byte $00
+.macro LINE_SET
+.scope
+		sta [uidraw_scrptr],z				; red values
+		inc uidraw_scrptr+1
+		bne :+
+		inc uidraw_scrptr+2
+:		sta [uidraw_scrptr],z				; green values
+		inc uidraw_scrptr+1
+		bne :+
+		inc uidraw_scrptr+2
+:		sta [uidraw_scrptr],z				; blue values
+.endscope
+.endmacro
 
-aaline_draw
+.macro LINE_CALCGRADIENTS
+		lda intersectY+1
+		SWAPNYBBLE
+		sta plotg1
+		sec
+		lda #$ff
+		sbc plotg1
+		sta plotg0
+.endmacro
+
+.macro LINE_STEEP1
+		clc
+		ldy intersectY+2
+		tya
+		adc times768_1,x
+		sta uidraw_scrptr+0
+		lda times768_2,x
+		adc #$00
+		sta uidraw_scrptr+1
+		lda times768_3,x
+		adc #$00
+		sta uidraw_scrptr+2
+		lda times768_4,x
+		adc #$00
+		sta uidraw_scrptr+3
+.endmacro
+
+.macro LINE_NONSTEEP1
+		clc
+		ldy intersectY+2
+		txa
+		adc times768_1,y
+		sta uidraw_scrptr+0
+		lda times768_2,y
+		adc #$00
+		sta uidraw_scrptr+1
+		lda times768_3,y
+		adc #$00
+		sta uidraw_scrptr+2
+		lda times768_4,y
+		adc #$00
+		sta uidraw_scrptr+3
+.endmacro
+
+.macro LINE_STEEP2
+		clc
+		dey
+		tya
+		adc times768_1,x
+		sta uidraw_scrptr+0
+		lda times768_2,x
+		adc #$00
+		sta uidraw_scrptr+1
+		lda times768_3,x
+		adc #$00
+		sta uidraw_scrptr+2
+		lda times768_4,x
+		adc #$00
+		sta uidraw_scrptr+3
+.endmacro
+
+.macro LINE_NONSTEEP2
+		clc
+		dey
+		txa
+		adc times768_1,y
+		sta uidraw_scrptr+0
+		lda times768_2,y
+		adc #$00
+		sta uidraw_scrptr+1
+		lda times768_3,y
+		adc #$00
+		sta uidraw_scrptr+2
+		lda times768_4,y
+		adc #$00
+		sta uidraw_scrptr+3
+.endmacro
+
+steep			.byte $00
+plotg0			.byte $00				; plot gradient
+plotg1			.byte $00				; plot gradient inverse
+
+aaline_setup
 
 		; swap points if needed
-
-		/*
-		int steep = absolute(y1 - y0) > absolute(x1 - x0);
-
-		// swap the co-ordinates if slope > 1 or we draw backwards
-		if(steep)
-		{
-			swap(&x0 , &y0);
-			swap(&x1 , &y1);
-		}
-
-		if(x0 > x1)
-		{
-			swap(&x0 ,&x1);
-			swap(&y0 ,&y1);
-		}
-		*/
-
 		MATH_SUB y1, y0, ytemp
 		MATH_SUB x1, x0, xtemp
 		MATH_ABS ytemp, ytemp
@@ -96,38 +136,20 @@ aaline_draw
 		bmi :+
 		SWAP x0, x1
 		SWAP y0, y1
-:		
 
-		/*
-		// compute the slope
-		float dx = x1-x0;
-		float dy = y1-y0; 
-		float gradient = dy/dx;
-		if (dx == 0.0)
-			gradient = 1;
-		*/
-		MATH_SUB x1, x0, xtemp
+:		MATH_SUB x1, x0, xtemp
 		MATH_SUB y1, y0, ytemp
 		MATH_DIV ytemp, xtemp, gradient
-
-		/*
-		int xpxl1 = x0;
-		int xpxl2 = x1;
-		float intersectY = y0;
-		*/
 
 		MATH_MOV x0, xstart
 		MATH_MOV x1, xend
 		MATH_MOV y0, intersectY
 
-		/*
-		if(steep)
-		{
-		}
-		else
-		{
-		}
-		*/
+		rts
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
+aaline_draw
 
 		lda steep
 		beq :+
@@ -136,87 +158,34 @@ aaline_draw
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
 
+aaline_clear
+
+		lda steep
+		beq :+
+		jmp aaline_clearsteep
+:		jmp aaline_clearnonsteep
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
 aaline_drawsteep
-		/*
-		for(int x = xpxl1; x <=xpxl2; x++)
-		{
-			// pixel coverage is determined by fractional part of y co-ordinate
-			drawPixel(iPartOfNumber(intersectY)  , x, rfPartOfNumber(intersectY));
-			drawPixel(iPartOfNumber(intersectY)-1, x, fPartOfNumber(intersectY));
-			intersectY += gradient;
-		}
-		*/
 
 		ldx x0+2
 
-lineloopsteep
+aaline_drawsteep_loop
 		phx
 
-		ldy intersectY+2
-		sty plotx0
-		dey
-		sty plotx1
-
-		lda intersectY+1
-		SWAPNYBBLE
-		sta plotg1
-
-		sec
-		lda #$ff
-		sbc plotg1
-		sta plotg0
-
-		clc
-		lda plotx0
-		adc times768_1,x
-		sta uidraw_scrptr+0
-		lda times768_2,x
-		adc #$00
-		sta uidraw_scrptr+1
-		lda times768_3,x
-		adc #$00
-		sta uidraw_scrptr+2
-		lda times768_4,x
-		adc #$00
-		sta uidraw_scrptr+3
+		LINE_CALCGRADIENTS
+		LINE_STEEP1
 
 		ldz #$00
 		lda plotg1
-		sta [uidraw_scrptr],z				; red values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; green values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; blue values
+		LINE_SET
 
-		clc
-		lda plotx1
-		adc times768_1,x
-		sta uidraw_scrptr+0
-		lda times768_2,x
-		adc #$00
-		sta uidraw_scrptr+1
-		lda times768_3,x
-		adc #$00
-		sta uidraw_scrptr+2
-		lda times768_4,x
-		adc #$00
-		sta uidraw_scrptr+3
+		LINE_STEEP2
 
-		ldz #$00
+		;ldz #$00
 		lda plotg0
-		sta [uidraw_scrptr],z				; red values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; green values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; blue values
+		LINE_SET
 
 		MATH_ADD intersectY, gradient, intersectY
 
@@ -224,98 +193,30 @@ lineloopsteep
 		inx
 		cpx x1+2
 		beq :+
-		jmp lineloopsteep
+		jmp aaline_drawsteep_loop
 
-:		
-		rts
+:		rts
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
-
-
 
 aaline_drawnonsteep
-		/*
-		for(int x = xpxl1; x <=xpxl2; x++)
-		{
-			// pixel coverage is determined by fractional part of y co-ordinate 
-			drawPixel(x, iPartOfNumber(intersectY)  , rfPartOfNumber(intersectY));
-			drawPixel(x, iPartOfNumber(intersectY)-1, fPartOfNumber(intersectY));
-			intersectY += gradient;
-		}
-		*/
-
 		ldx x0+2
 
-lineloopnonsteep
+aaline_drawnonsteep_loop
 		phx
 
-		ldy intersectY+2
-		sty ploty0
-		dey
-		sty ploty1
-
-		lda intersectY+1
-		SWAPNYBBLE
-		sta plotg1
-
-		sec
-		lda #$ff
-		sbc plotg1
-		sta plotg0
-
-		clc
-		ldy ploty0
-		txa
-		adc times768_1,y
-		sta uidraw_scrptr+0
-		lda times768_2,y
-		adc #$00
-		sta uidraw_scrptr+1
-		lda times768_3,y
-		adc #$00
-		sta uidraw_scrptr+2
-		lda times768_4,y
-		adc #$00
-		sta uidraw_scrptr+3
+		LINE_CALCGRADIENTS
+		LINE_NONSTEEP1
 
 		ldz #$00
 		lda plotg1
-		sta [uidraw_scrptr],z				; red values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; green values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; blue values
+		LINE_SET
 
-		clc
-		ldy ploty1
-		txa
-		adc times768_1,y
-		sta uidraw_scrptr+0
-		lda times768_2,y
-		adc #$00
-		sta uidraw_scrptr+1
-		lda times768_3,y
-		adc #$00
-		sta uidraw_scrptr+2
-		lda times768_4,y
-		adc #$00
-		sta uidraw_scrptr+3
+		LINE_NONSTEEP2
 
-		ldz #$00
+		;ldz #$00
 		lda plotg0
-		sta [uidraw_scrptr],z				; red values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; green values
-		inc uidraw_scrptr+1
-		bne :+
-		inc uidraw_scrptr+2
-:		sta [uidraw_scrptr],z				; blue values
+		LINE_SET
 
 		MATH_ADD intersectY, gradient, intersectY
 
@@ -323,21 +224,72 @@ lineloopnonsteep
 		inx
 		cpx x1+2
 		beq :+
-		jmp lineloopnonsteep
+		jmp aaline_drawnonsteep_loop
 
-:
-		rts
+:		rts
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
 
-plotx0			.byte $00
-plotx1			.byte $00
+aaline_clearsteep
 
-ploty0			.byte $00
-ploty1			.byte $00
+		ldx x0+2
 
-plotg0			.byte $00
-plotg1			.byte $00
+aaline_clearsteep_loop
+		phx
+
+		LINE_CALCGRADIENTS
+		LINE_STEEP1
+
+		ldz #$00
+		lda #$00	; clear
+		LINE_SET
+
+		LINE_STEEP2
+
+		;ldz #$00
+		lda #$00	; clear
+		LINE_SET
+
+		MATH_ADD intersectY, gradient, intersectY
+
+		plx
+		inx
+		cpx x1+2
+		beq :+
+		jmp aaline_clearsteep_loop
+
+:		rts
+
+; ----------------------------------------------------------------------------------------------------------------------------------------
+
+aaline_clearnonsteep
+		ldx x0+2
+
+aaline_clearnonsteep_loop
+		phx
+
+		LINE_CALCGRADIENTS
+		LINE_NONSTEEP1
+
+		ldz #$00
+		lda #$00	; clear
+		LINE_SET
+
+		LINE_NONSTEEP2
+
+		;ldz #$00
+		lda #$00	; clear
+		LINE_SET
+
+		MATH_ADD intersectY, gradient, intersectY
+
+		plx
+		inx
+		cpx x1+2
+		beq :+
+		jmp aaline_clearnonsteep_loop
+
+:		rts
 
 ; ----------------------------------------------------------------------------------------------------------------------------------------
 
